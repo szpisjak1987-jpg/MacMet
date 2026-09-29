@@ -1,9 +1,11 @@
 package com.example.macmet.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -113,12 +115,24 @@ fun JelenidoCard(
                     )
                 }
 
-                Icon(
-                    imageVector = getWeatherIcon(jelenido.weatherCode, jelenido.isDay),
-                    contentDescription = jelenido.weatherCondition.descriptionHu,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(72.dp)
-                )
+                val iconColor = getWeatherIconColor(jelenido.weatherCode, jelenido.isDay)
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = iconColor.copy(alpha = 0.15f),
+                    modifier = Modifier.size(88.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = getWeatherIcon(jelenido.weatherCode, jelenido.isDay),
+                            contentDescription = jelenido.weatherCondition.descriptionHu,
+                            tint = iconColor,
+                            modifier = Modifier.size(52.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -180,18 +194,29 @@ private fun MetricTile(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                modifier = Modifier.size(40.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.width(10.dp))
             Column {
                 Text(
