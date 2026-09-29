@@ -6,6 +6,7 @@ import com.example.macmet.data.model.api.FlexibleDoubleAdapter
 import com.example.macmet.data.model.api.FlexibleLongAdapter
 import com.example.macmet.data.model.api.FlexibleStringAdapter
 import com.example.macmet.data.model.api.MetarDtoAdapter
+import com.example.macmet.data.updater.GithubApiService
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient
@@ -115,5 +116,14 @@ object RetrofitClient {
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(NetatmoApiService::class.java)
+    }
+
+    val githubApiService: GithubApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(GithubApiService.BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(GithubApiService::class.java)
     }
 }
