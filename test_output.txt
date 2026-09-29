@@ -1,0 +1,44 @@
+Initialized native services in: C:\Users\beton\.gradle\native
+Initialized jansi services in: C:\Users\beton\.gradle\native
+
+Welcome to Gradle 9.6.0!
+
+Here are the highlights of this release:
+ - Improved Configuration Cache hit rates
+ - Additional CLI rendering options
+ - Important project hierarchy lookup deprecations
+
+For more details see https://docs.gradle.org/9.6.0/release-notes.html
+
+The client will now receive all logging from the daemon (pid: 26952). The daemon log file: C:\Users\beton\.gradle\daemon\9.6.0\daemon-26952.out.log
+Starting 69th build in daemon [uptime: 2 hrs 18 mins 49.134 secs, performance: 99%, GC rate: 0.00/s, heap usage: 18% of 2 GiB]
+Using 16 worker leases.
+Operational build model parameters: {cachingModelBuilding=false, configurationCache=true, configurationCacheDisabledReason=null, configurationCacheParallelLoad=true, configurationCacheParallelStore=false, configureOnDemand=false, invalidateCoupledProjects=false, isolatedProjects=false, isolatedProjectsDiagnostics=false, modelAsProjectDependency=false, modelBuilding=false, parallelModelBuilding=false, parallelProjectConfiguration=false, parallelProjectExecution=false, resilientModelBuilding=false, vintage=false}
+Encryption key source: default Gradle keystore (pkcs12)
+Calculating task graph as no cached configuration is available for tasks: :app:testDebugUnitTest --tests com.example.macmet.BekescsabaStationTest
+Now considering [C:\Users\beton\AndroidStudioProjects\MacMet2] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Resolved plugin [id: 'org.gradle.toolchains.foojay-resolver-convention', version: '1.0.0']
+Settings evaluated using settings file 'C:\Users\beton\AndroidStudioProjects\MacMet2\settings.gradle.kts'.
+Projects loaded. Root project using build file 'C:\Users\beton\AndroidStudioProjects\MacMet2\build.gradle.kts'.
+Included projects: [root project 'MacóMet', project ':app']
+
+> Configure project :
+Evaluating root project 'MacóMet' using build file 'C:\Users\beton\AndroidStudioProjects\MacMet2\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '9.4.1', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '2.2.10', apply: false]
+Resolved plugin [id: 'com.google.devtools.ksp', version: '2.3.5', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization', version: '2.2.21', apply: false]
+
+> Configure project :app
+Evaluating project ':app' using build file 'C:\Users\beton\AndroidStudioProjects\MacMet2\app\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '9.4.1']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '2.2.10']
+Resolved plugin [id: 'com.google.devtools.ksp', version: '2.3.5']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization', version: '2.2.21']
+
+See the complete report at file:///C:/Users/beton/AndroidStudioProjects/MacMet2/build/reports/configuration-cache/55qjduv68oflvmg36c1zwst3j/k2vwknwqxbokioftw0f1kni7/configuration-cache-report.html
+Watched directory hierarchies: [C:\Users\beton\AndroidStudioProjects\MacMet2]
+Configuration cache entry stored.
