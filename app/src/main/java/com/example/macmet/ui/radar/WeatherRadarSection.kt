@@ -1,6 +1,7 @@
 package com.example.macmet.ui.radar
 
 import android.annotation.SuppressLint
+import android.view.View
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -30,7 +31,7 @@ fun WeatherRadarSection(
 ) {
     Column(modifier = modifier) {
         Text(
-            text = "Időjárás Radar (Windy)",
+            text = "Csapadék Radar (RainViewer)",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -45,22 +46,80 @@ fun WeatherRadarSection(
             shadowElevation = 2.dp,
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
-            val radarUrl = remember(latitude, longitude) {
-                "https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=%C2%B0C&metricWind=km/h&zoom=7&overlay=radar&product=radar&level=surface&lat=$latitude&lon=$longitude&detailLat=$latitude&detailLon=$longitude&marker=true"
+            val htmlContent = remember(latitude, longitude) {
+                """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                    <style>
+                        body, html, #map { height: 100%; width: 100%; margin: 0; padding: 0; background: #1a1c1e; }
+                        .leaflet-container { background: #1a1c1e; }
+                    </style>
+                </head>
+                <body>
+                    <div id="map"></div>
+                    <script>
+                        var map = L.map('map', { zoomControl: true, attributionControl: false }).setView([$latitude, $longitude], 8);
+                        
+                        // CartoDB Dark Matter tile layer for a sleek dark weather map look
+                        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                            maxZoom: 19,
+                            subdomains: 'abcd'
+                        }).addTo(map);
+
+                        // Location marker
+                        L.circleMarker([$latitude, $longitude], {
+                            radius: 7,
+                            fillColor: "#388e3c",
+                            color: "#ffffff",
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.9
+                        }).addTo(map);
+
+                        // Fetch RainViewer Radar Overlay
+                        fetch('https://api.rainviewer.com/public/weather-maps.json')
+                            .then(function(res) { return res.json(); })
+                            .then(function(data) {
+                                if (data && data.radar && data.radar.past && data.radar.past.length > 0) {
+                                    var latest = data.radar.past[data.radar.past.length - 1];
+                                    var tileUrl = data.host + latest.path + '/256/{z}/{x}/{y}/2/1_1.png';
+                                    L.tileLayer(tileUrl, {
+                                        opacity: 0.75,
+                                        zIndex: 100
+                                    }).addTo(map);
+                                }
+                            })
+                            .catch(function(err) {
+                                console.error('Radar load error:', err);
+                            });
+                    </script>
+                </body>
+                </html>
+                """.trimIndent()
             }
 
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        setLayerType(View.LAYER_TYPE_HARDWARE, null)
                         webViewClient = WebViewClient()
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                        loadUrl(radarUrl)
+                        settings.apply {
+                            javaScriptEnabled = true
+                            domStorageEnabled = true
+                            databaseEnabled = true
+                            useWideViewPort = true
+                            loadWithOverviewMode = true
+                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        }
+                        loadDataWithBaseURL("https://api.rainviewer.com", htmlContent, "text/html", "UTF-8", null)
                     }
                 },
                 update = { webView ->
-                    webView.loadUrl(radarUrl)
+                    webView.loadDataWithBaseURL("https://api.rainviewer.com", htmlContent, "text/html", "UTF-8", null)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
