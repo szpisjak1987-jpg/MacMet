@@ -9,6 +9,8 @@ import com.example.macmet.data.api.RetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+import java.io.File
+
 class AppUpdater(
     private val context: Context,
     private val githubOwner: String = "szpisjak1987-jpg",
@@ -18,6 +20,7 @@ class AppUpdater(
 
     suspend fun checkForUpdate(currentVersion: String): Pair<Boolean, GithubReleaseDto?> = withContext(Dispatchers.IO) {
         try {
+            Log.d("AppUpdater", "Checking GitHub release for $githubOwner/$githubRepo, current app version: $currentVersion")
             val response = apiService.getLatestRelease(githubOwner, githubRepo)
             if (response.isSuccessful) {
                 val release = response.body()
@@ -25,8 +28,13 @@ class AppUpdater(
                     val latestVersion = release.tagName.replace("v", "").trim()
                     val currentVer = currentVersion.replace("v", "").trim()
                     
+                    Log.d("AppUpdater", "Latest release tag: ${release.tagName} (parsed: $latestVersion), current: $currentVer")
+
                     if (isNewerVersion(latestVersion, currentVer)) {
+                        Log.d("AppUpdater", "New update available!")
                         return@withContext Pair(true, release)
+                    } else {
+                        Log.d("AppUpdater", "App is up-to-date")
                     }
                 }
             } else {
@@ -57,11 +65,17 @@ class AppUpdater(
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         
         val uri = Uri.parse(apkUrl)
+        val downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        val file = File(downloadDir, "MacMet-$version.apk")
+        if (file.exists()) {
+            file.delete()
+        }
+
         val request = DownloadManager.Request(uri).apply {
             setTitle("MacMet Frissítés")
             setDescription("Verzió: $version letöltése...")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "MacMet-$version.apk")
+            setDestinationUri(Uri.fromFile(file))
             setAllowedOverMetered(true)
             setAllowedOverRoaming(true)
         }

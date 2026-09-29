@@ -6,6 +6,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -89,14 +90,16 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(Unit) {
                         // Check for GitHub updates silently
                         try {
-                            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                            val currentVersion = packageInfo.versionName ?: "1.0"
+                            val currentVersion = BuildConfig.VERSION_NAME
+                            Log.d("AppUpdater", "MainActivity checking update for version: $currentVersion")
                             val (isUpdateAvailable, release) = appUpdater.checkForUpdate(currentVersion)
                             if (isUpdateAvailable && release != null && release.assets?.isNotEmpty() == true) {
                                 availableRelease = release
                                 showUpdateDialog = true
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: Exception) {
+                            Log.e("AppUpdater", "Error checking for updates in MainActivity", e)
+                        }
 
                         val fineGranted = ContextCompat.checkSelfPermission(
                             this@MainActivity,
