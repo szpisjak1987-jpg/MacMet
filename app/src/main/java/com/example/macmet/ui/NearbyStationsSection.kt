@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +55,11 @@ fun NearbyStationsSection(
     stations: List<WeatherStation>,
     modifier: Modifier = Modifier,
 ) {
-    var isExpanded by remember { mutableStateOf(value = true) }
+    if (stations.isEmpty()) return
+    
+    var isExpanded by remember { mutableStateOf(value = false) }
+    val closestStation = stations.first()
+    val otherStations = stations.drop(1)
 
     ElevatedCard(
         modifier = modifier.fillMaxWidth(),
@@ -67,60 +72,65 @@ fun NearbyStationsSection(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            // Header Row: Section Title & Count + Expand/Collapse Button
+            // Header: Legközelebbi mérőállomás
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { isExpanded = !isExpanded }
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .padding(top = 4.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Icon(
+                    imageVector = Icons.Rounded.Radar,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Legközelebbi mérőállomás",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            // Mindig mutatjuk a legközelebbi állomást
+            NearbyStationItemCard(station = closestStation)
+
+            // További állomások (ha vannak)
+            if (otherStations.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Kinyitható szekció fejléce
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { isExpanded = !isExpanded }
+                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Radar,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Közeli mérőállomások (${stations.size} db)",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = "További ${otherStations.size} állomás a közelben",
+                        style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.primary
                     )
-                }
-
-                IconButton(
-                    onClick = { isExpanded = !isExpanded },
-                    modifier = Modifier.size(32.dp)
-                ) {
+                    
                     Icon(
                         imageVector = if (isExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                         contentDescription = if (isExpanded) "Összecsukás" else "Kinyitás",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
-            }
 
-            AnimatedVisibility(visible = isExpanded) {
-                Column(
-                    modifier = Modifier.padding(top = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    if (stations.isEmpty()) {
-                        Text(
-                            text = "Nincsenek elérhető állomások a közelben.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontStyle = FontStyle.Italic,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    } else {
-                        stations.forEach { station ->
+                AnimatedVisibility(visible = isExpanded) {
+                    Column(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        otherStations.forEach { station ->
                             NearbyStationItemCard(station = station)
                         }
                     }
