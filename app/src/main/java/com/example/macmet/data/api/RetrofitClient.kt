@@ -126,4 +126,13 @@ object RetrofitClient {
             .build()
             .create(GithubApiService::class.java)
     }
+
+    val meteoalarmApiService: MeteoalarmApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(MeteoalarmApiService.BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(MeteoalarmApiService::class.java)
+    }
 }

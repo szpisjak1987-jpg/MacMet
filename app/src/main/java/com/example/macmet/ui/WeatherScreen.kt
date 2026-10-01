@@ -29,8 +29,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,7 +52,9 @@ import com.example.macmet.data.model.domain.WeatherCondition
 import com.example.macmet.data.model.domain.WeatherForecast7Days
 import com.example.macmet.data.model.domain.WeatherStation
 import com.example.macmet.data.estimation.SafetyMonitorAnalyzer
+import androidx.compose.ui.platform.LocalContext
 import com.example.macmet.ui.safety.SafetyMonitorSection
+import com.example.macmet.widget.WidgetDataManager
 import com.example.macmet.ui.theme.MacóMetTheme
 import com.example.macmet.ui.weather.WeatherUiState
 import com.example.macmet.ui.weather.WeatherViewModel
@@ -303,6 +307,11 @@ private fun WeatherSuccessView(
     onUseDefaultLocation: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    LaunchedEffect(state.forecast) {
+        WidgetDataManager.saveForecast(context, state.forecast)
+    }
+
     val scrollState = rememberScrollState()
 
     Column(
@@ -330,8 +339,11 @@ private fun WeatherSuccessView(
         NearbyStationsSection(stations = state.jelenido.nearbyStations)
 
         // Safety Monitor Section
-        val safetyData = remember(state.forecast) {
-            SafetyMonitorAnalyzer.analyze(state.forecast)
+        val safetyData by produceState(
+            initialValue = SafetyMonitorAnalyzer.analyzeSyncFallback(state.forecast),
+            key1 = state.forecast
+        ) {
+            value = SafetyMonitorAnalyzer.analyze(state.forecast)
         }
         SafetyMonitorSection(safetyData = safetyData)
 
