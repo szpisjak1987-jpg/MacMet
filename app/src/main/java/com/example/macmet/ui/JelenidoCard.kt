@@ -334,7 +334,7 @@ private fun StationWeightingBadge(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "50 km sugár",
+                            text = "20 km sugár",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurface

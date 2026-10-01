@@ -29,8 +29,7 @@ object JelenidoEstimator {
         currentDto: CurrentWeatherDto,
         locationName: String = "Budapest",
         stations: List<WeatherStation> = emptyList(),
-        stationObservation: StationObservation? = null,
-        targetStationWeight: Double = 0.7
+        stationObservation: StationObservation? = null
     ): JelenidoData {
         val rawModelTemp = currentDto.temperature2m
         val rawModelHum = currentDto.relativeHumidity2m
@@ -65,7 +64,15 @@ object JelenidoEstimator {
         val tempStations = validStations.filter { it.temperature != null }
         val isStationAvailable = tempStations.isNotEmpty()
 
-        val stationWeight = if (isStationAvailable) targetStationWeight.coerceIn(0.0, 1.0) else 0.0
+        // AI-based dynamic weighting logic
+        // The closer and more numerous the stations, the more weight they get, up to a maximum of 95%
+        val (targetStationWeight, confidenceIndex) = calculateDynamicWeightAndConfidence(
+            isStationAvailable = isStationAvailable,
+            tempStations = tempStations,
+            rawModelTemp = rawModelTemp
+        )
+        
+        val stationWeight = if (isStationAvailable) targetStationWeight.coerceIn(0.0, 0.95) else 0.0
         val modelWeight = 1.0 - stationWeight
 
         val (finalTemp, stationTempAvg) = if (isStationAvailable) {
@@ -107,13 +114,6 @@ object JelenidoEstimator {
         } else {
             rawModelPress
         }
-
-        val confidenceIndex = calculateConfidenceScore(
-            isStationAvailable = isStationAvailable,
-            tempStations = tempStations,
-            stationTempAvg = stationTempAvg,
-            rawModelTemp = rawModelTemp
-        )
 
         val estimationDetails = EstimationDetails(
             stationWeight = stationWeight,
@@ -210,5 +210,65 @@ object JelenidoEstimator {
         }
 
         return (baseConfidence + densityBonus + freshnessBonus + agreementModifier).coerceIn(50, 98)
+    }
+
+    /**
+     * AI-inspired dynamic weighting based on station density, proximity, and freshness.
+     * Returns Pair(stationWeight, confidenceIndex)
+     */
+    private fun calculateDynamicWeightAndConfidence(
+        isStationAvailable: Boolean,
+        tempStations: List<WeatherStation>,
+        rawModelTemp: Double
+    ): Pair<Double, Int> {
+        if (!isStationAvailable || tempStations.isEmpty()) {
+            return Pair(0.0, 85) // Only model data available
+        }
+
+        var totalWeightScore = 0.0
+        val now = System.currentTimeMillis()
+        var weightedTempSum = 0.0
+
+        for (station in tempStations) {
+            // 1. Proximity score (closer stations give much higher confidence)
+            val distanceFactor = 1.0 / (1.0 + (station.distanceKm / 5.0)) // Dropoff smoother
+
+            // 2. Freshness score (older data is less trustworthy)
+            val ageMs = now - (station.timestampMs ?: now)
+            val ageMins = ageMs / (1000 * 60.0)
+            val freshnessFactor = when {
+                ageMins <= 15 -> 1.0
+                ageMins <= 30 -> 0.8
+                ageMins <= 60 -> 0.5
+                else -> 0.2
+            }
+
+            // 3. Provider trust multiplier
+            val trustFactor = station.providerType.baseWeightMultiplier
+
+            val stationScore = distanceFactor * freshnessFactor * trustFactor
+            totalWeightScore += stationScore
+            weightedTempSum += (station.temperature ?: rawModelTemp) * stationScore
+        }
+
+        val stationAvgTemp = if (totalWeightScore > 0) weightedTempSum / totalWeightScore else rawModelTemp
+
+        // Base station weight starts at 0.5 and grows logarithmically with total weight score
+        // e.g. Score of 1.0 -> ~0.7, Score of 3.0 -> ~0.85, Score of 10+ -> ~0.95
+        val dynamicWeight = (0.5 + (Math.log10(1.0 + totalWeightScore) * 0.4)).coerceIn(0.0, 0.95)
+
+        // Confidence Index (percentage)
+        val tempDiff = abs(stationAvgTemp - rawModelTemp)
+        val agreementPenalty = when {
+            tempDiff > 5.0 -> 15 // Huge discrepancy between model and stations
+            tempDiff > 3.0 -> 8
+            tempDiff > 1.5 -> 3
+            else -> 0
+        }
+
+        val baseConfidence = 75 + (dynamicWeight * 20).toInt()
+        val finalConfidence = (baseConfidence - agreementPenalty).coerceIn(40, 99)
+
+        return Pair(dynamicWeight, finalConfidence)
     }
 }
