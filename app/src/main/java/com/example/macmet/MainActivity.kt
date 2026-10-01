@@ -114,17 +114,19 @@ class MainActivity : ComponentActivity() {
                         weatherViewModel.updatePermissionStatus(fineGranted || coarseGranted)
                     }
 
-                    WeatherScreen(
-                        viewModel = weatherViewModel,
-                        onRequestPermission = {
-                            locationPermissionLauncher.launch(
-                                arrayOf(
+                        WeatherScreen(
+                            viewModel = weatherViewModel,
+                            onRequestPermission = {
+                                val permissions = mutableListOf(
                                     Manifest.permission.ACCESS_FINE_LOCATION,
                                     Manifest.permission.ACCESS_COARSE_LOCATION
                                 )
-                            )
-                        }
-                    )
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                                locationPermissionLauncher.launch(permissions.toTypedArray())
+                            }
+                        )
 
                     if (showUpdateDialog && availableRelease != null) {
                         val release = availableRelease!!

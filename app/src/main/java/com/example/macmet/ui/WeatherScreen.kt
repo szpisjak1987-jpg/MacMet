@@ -49,7 +49,8 @@ import com.example.macmet.data.model.domain.StationProviderType
 import com.example.macmet.data.model.domain.WeatherCondition
 import com.example.macmet.data.model.domain.WeatherForecast7Days
 import com.example.macmet.data.model.domain.WeatherStation
-import com.example.macmet.ui.radar.WeatherRadarSection
+import com.example.macmet.data.estimation.SafetyMonitorAnalyzer
+import com.example.macmet.ui.safety.SafetyMonitorSection
 import com.example.macmet.ui.theme.MacóMetTheme
 import com.example.macmet.ui.weather.WeatherUiState
 import com.example.macmet.ui.weather.WeatherViewModel
@@ -328,11 +329,11 @@ private fun WeatherSuccessView(
         // Nearby Weather Stations Section
         NearbyStationsSection(stations = state.jelenido.nearbyStations)
 
-        // Weather Radar Section
-        WeatherRadarSection(
-            latitude = state.forecast.latitude,
-            longitude = state.forecast.longitude
-        )
+        // Safety Monitor Section
+        val safetyData = remember(state.forecast) {
+            SafetyMonitorAnalyzer.analyze(state.forecast)
+        }
+        SafetyMonitorSection(safetyData = safetyData)
 
         // Hourly Forecast Row
         if (state.forecast.hourlyForecasts.isNotEmpty()) {

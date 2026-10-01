@@ -27,7 +27,7 @@ android {
         minSdk = 28
         targetSdk = 37
         versionCode = 2
-        versionName = "1.0.6"
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -94,6 +94,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.play.services.location)
     implementation(libs.retrofit)
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
     testImplementation(libs.androidx.core)
     testImplementation(libs.androidx.junit)
     testImplementation(libs.junit)

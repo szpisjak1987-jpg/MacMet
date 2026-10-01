@@ -39,7 +39,9 @@ data class HourlyWeatherDto(
     @field:Json(name = "precipitation_probability") val precipitationProbability: List<Double>? = null,
     @field:Json(name = "precipitation") val precipitation: List<Double>? = null,
     @field:Json(name = "weather_code") val weatherCode: List<Int>? = null,
-    @field:Json(name = "wind_speed_10m") val windSpeed10m: List<Double>? = null
+    @field:Json(name = "wind_speed_10m") val windSpeed10m: List<Double>? = null,
+    @field:Json(name = "visibility") val visibility: List<Double>? = null,
+    @field:Json(name = "wind_gusts_10m") val windGusts10m: List<Double>? = null
 )
 
 @JsonClass(generateAdapter = true)
