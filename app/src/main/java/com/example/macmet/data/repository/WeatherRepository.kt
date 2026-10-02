@@ -24,7 +24,15 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
+import android.util.Log
+import com.example.macmet.data.estimation.JelenidoEstimator
+import com.example.macmet.data.model.EstimationDetails
+import com.example.macmet.data.model.StationProviderType
+import com.example.macmet.data.model.WeatherStation
+import com.example.macmet.data.model.WmoCodeHelper
+import com.example.macmet.data.util.Haversine
 import java.util.Locale
+import kotlin.math.cos
 import kotlin.math.roundToInt
 
 class WeatherRepository(
@@ -46,8 +54,8 @@ class WeatherRepository(
     ): Result<CompleteWeatherData> = withContext(Dispatchers.IO) {
         val cacheKey = "${String.format(Locale.US, "%.2f", lat)}_${String.format(Locale.US, "%.2f", lon)}"
         try {
-            // Concurrently fetch forecast & air quality
-            val (forecastResp, airQualityResp) = coroutineScope {
+            // Concurrently fetch forecast, air quality & PWS stations (within 20km)
+            val (forecastResp, airQualityResp, pwsStations) = coroutineScope {
                 val forecastDeferred = async {
                     forecastApi.getForecast(latitude = lat, longitude = lon)
                 }
@@ -58,14 +66,27 @@ class WeatherRepository(
                         null
                     }
                 }
-                Pair(forecastDeferred.await(), airQualityDeferred.await())
+                val pwsDeferred = async {
+                    try {
+                        val sense = async { fetchOpenSenseMapStations(lat, lon) }
+                        val netatmo = async { fetchNetatmoStations(lat, lon) }
+                        val noaa = async { fetchNoaaStations(lat, lon) }
+                        (sense.await() + netatmo.await() + noaa.await())
+                            .filter { it.distanceKm <= 50.0 }
+                            .sortedBy { it.distanceKm }
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                }
+                Triple(forecastDeferred.await(), airQualityDeferred.await(), pwsDeferred.await())
             }
 
             val completeData = mapToCompleteData(
                 locationName = locationName,
                 country = countryName ?: "Közép-Európa",
                 forecast = forecastResp,
-                airQuality = airQualityResp?.current
+                airQuality = airQualityResp?.current,
+                pwsStations = pwsStations
             )
 
             // Cache successfully downloaded data
@@ -93,7 +114,8 @@ class WeatherRepository(
                             locationName = cached.locationName,
                             country = countryName ?: "Offline mentés",
                             forecast = cachedForecast,
-                            airQuality = null
+                            airQuality = null,
+                            pwsStations = emptyList()
                         )
                         return@withContext Result.success(fallback)
                     }
@@ -137,9 +159,17 @@ class WeatherRepository(
         locationName: String,
         country: String,
         forecast: OpenMeteoForecastResponse,
-        airQuality: CurrentAirQualityDto?
+        airQuality: CurrentAirQualityDto?,
+        pwsStations: List<WeatherStation> = emptyList()
     ): CompleteWeatherData {
-        val current = forecast.current ?: throw IllegalStateException("Hiányzó jelenlegi időjárás adat")
+        val rawCurrent = forecast.current ?: throw IllegalStateException("Hiányzó jelenlegi időjárás adat")
+        
+        // Fuse PWS station observations with Open-Meteo model
+        val (current, estimationDetails, validStations) = JelenidoEstimator.estimate(
+            currentDto = rawCurrent,
+            stations = pwsStations
+        )
+
         val hourly = forecast.hourly
         val daily = forecast.daily
 
@@ -172,6 +202,10 @@ class WeatherRepository(
                 }
                 val isHourNight = hourOfDay < 6 || hourOfDay >= 20
 
+                val rawCode = hourly.weatherCode.getOrNull(i) ?: 0
+                val cloudPct = hourly.cloudCover?.getOrNull(i)
+                val refinedCode = WmoCodeHelper.refineWeatherCode(rawCode, cloudPct)
+
                 hourlyItems.add(
                     HourlyForecastItem(
                         timeLabel = hourLabel,
@@ -179,7 +213,7 @@ class WeatherRepository(
                         apparentTemperature = hourly.apparentTemperature?.getOrNull(i) ?: hourly.temperature.getOrNull(i) ?: 0.0,
                         precipitationProbability = hourly.precipitationProbability?.getOrNull(i) ?: 0,
                         precipitationMm = hourly.precipitation?.getOrNull(i) ?: 0.0,
-                        weatherCode = hourly.weatherCode.getOrNull(i) ?: 0,
+                        weatherCode = refinedCode,
                         isNight = isHourNight,
                         windSpeed = hourly.windSpeed?.getOrNull(i) ?: 0.0,
                         uvIndex = hourly.uvIndex?.getOrNull(i) ?: 0.0,
@@ -333,7 +367,215 @@ class WeatherRepository(
             activeAlerts = activeAlerts,
             weekMinTemp = weekMin,
             weekMaxTemp = weekMax,
-            lastUpdated = lastUpdatedFormatted
+            lastUpdated = lastUpdatedFormatted,
+            nearbyStations = validStations,
+            estimationDetails = estimationDetails
         )
+    }
+
+    private suspend fun fetchOpenSenseMapStations(lat: Double, lon: Double): List<WeatherStation> {
+        val result = mutableListOf<WeatherStation>()
+        try {
+            val nearParam = "$lon,$lat"
+            val boxes = NetworkClient.openSenseMapApi.getBoxesNear(near = nearParam, radius = 20000)
+            for (box in boxes) {
+                val coords = box.loc?.firstOrNull()?.geometry?.coordinates
+                if (coords != null && coords.size >= 2) {
+                    val boxLon = coords[0]
+                    val boxLat = coords[1]
+                    val dist = Haversine.distanceKm(lat, lon, boxLat, boxLon)
+                    if (dist <= 20.0) {
+                        var temp: Double? = null
+                        var hum: Double? = null
+                        var press: Double? = null
+                        var wind: Double? = null
+
+                        box.sensors?.forEach { sensor ->
+                            val sName = sensor.title.lowercase()
+                            val valDouble = sensor.lastMeasurement?.value?.toDoubleOrNull()
+                            if (valDouble != null) {
+                                when {
+                                    sName.contains("temp") || sName.contains("hőmérséklet") -> temp = valDouble
+                                    sName.contains("hum") || sName.contains("páratartalom") -> hum = valDouble
+                                    sName.contains("press") || sName.contains("nyomás") -> press = valDouble
+                                    sName.contains("wind") || sName.contains("szél") -> wind = valDouble
+                                }
+                            }
+                        }
+
+                        if (temp != null || hum != null || press != null || wind != null) {
+                            val cityName = box.name.substringBefore("-").substringBefore("(").trim()
+                            result.add(
+                                WeatherStation(
+                                    id = "sensebox_${box.id}",
+                                    name = box.name,
+                                    cityName = if (cityName.length in 3..25) cityName else null,
+                                    providerType = StationProviderType.AMATEUR_OPENSENSEMAP,
+                                    latitude = boxLat,
+                                    longitude = boxLon,
+                                    distanceKm = (dist * 10.0).roundToInt() / 10.0,
+                                    temperature = temp,
+                                    relativeHumidity = hum,
+                                    pressure = press,
+                                    windSpeed = wind,
+                                    timestampMs = System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WeatherRepository", "Error fetching OpenSenseMap", e)
+        }
+        return result
+    }
+
+    private suspend fun fetchNetatmoStations(lat: Double, lon: Double): List<WeatherStation> {
+        val list = mutableListOf<WeatherStation>()
+        try {
+            val delta = 0.45 // ~20km bbox
+            val response = NetworkClient.netatmoApi.getPublicData(
+                latNe = lat + delta,
+                lonNe = lon + delta,
+                latSw = lat - delta,
+                lonSw = lon - delta
+            )
+            if (response.isSuccessful) {
+                response.body()?.body?.forEach { station ->
+                    val coords = station.place?.location
+                    if (coords != null && coords.size >= 2) {
+                        val sLon = coords[0]
+                        val sLat = coords[1]
+                        val dist = Haversine.distanceKm(lat, lon, sLat, sLon)
+                        if (dist <= 20.0) {
+                            var temp: Double? = null
+                            var hum: Double? = null
+                            var press: Double? = null
+
+                            station.measures?.values?.forEach { measure ->
+                                measure.res?.values?.firstOrNull()?.let { values ->
+                                    val types = measure.type ?: emptyList()
+                                    types.forEachIndexed { idx, typeName ->
+                                        val v = values.getOrNull(idx)
+                                        if (v != null) {
+                                            when (typeName) {
+                                                "temperature" -> temp = v
+                                                "humidity" -> hum = v
+                                                "pressure" -> press = v
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (temp != null) {
+                                val cName = station.place?.city
+                                val sName = station.place?.street ?: station.place?.city ?: "Netatmo Állomás"
+                                list.add(
+                                    WeatherStation(
+                                        id = "netatmo_${station.id}",
+                                        name = sName,
+                                        cityName = cName,
+                                        providerType = StationProviderType.AMATEUR_NETATMO,
+                                        latitude = sLat,
+                                        longitude = sLon,
+                                        distanceKm = (dist * 10.0).roundToInt() / 10.0,
+                                        temperature = temp,
+                                        relativeHumidity = hum,
+                                        pressure = press,
+                                        timestampMs = System.currentTimeMillis()
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WeatherRepository", "Error fetching Netatmo", e)
+        }
+        return list
+    }
+
+    private suspend fun fetchNoaaStations(lat: Double, lon: Double): List<WeatherStation> {
+        val list = mutableListOf<WeatherStation>()
+        try {
+            val delta = 0.90 // ~50km bbox to catch regional airports
+            val bbox = "${lat - delta},${lon - delta},${lat + delta},${lon + delta}"
+            var response = NetworkClient.aviationWeatherApi.getMetarForBbox(bbox)
+            
+            var metarList = if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                response.body()
+            } else {
+                // Fallback to major regional Hungarian airports
+                val fallbackResp = NetworkClient.aviationWeatherApi.getMetarForIds("LHBP,LHNY,LHDC,LHSM,LHPR,LHUD,LHSN,LHKV,LHKA,LHPP,LHPPA")
+                if (fallbackResp.isSuccessful) fallbackResp.body() else null
+            }
+
+            metarList?.forEach { metar ->
+                val sLat = metar.lat
+                val sLon = metar.lon
+                if (sLat != null && sLon != null) {
+                    val dist = Haversine.distanceKm(lat, lon, sLat, sLon)
+                    if (dist <= 50.0) { // Keep stations within 50km for official METAR
+                        val temp = metar.temp
+                        if (temp != null) {
+                            val wCode = metarCoverToWmoCode(metar.cover, metar.rawOb)
+                            val cName = metar.name?.substringBefore("/")?.substringBefore(",")?.trim() ?: metar.icaoId
+                            list.add(
+                                WeatherStation(
+                                    id = "noaa_${metar.icaoId}",
+                                    name = "${metar.name ?: metar.icaoId} / NOAA",
+                                    cityName = cName,
+                                    providerType = StationProviderType.OFFICIAL_NOAA_SYNOP,
+                                    latitude = sLat,
+                                    longitude = sLon,
+                                    distanceKm = (dist * 10.0).roundToInt() / 10.0,
+                                    temperature = temp,
+                                    relativeHumidity = if (metar.temp != null && metar.dewp != null) {
+                                        // Compute RH from temp and dew point: RH approx = 100 - 5*(temp - dewp)
+                                        (100.0 - 5.0 * (metar.temp - metar.dewp)).coerceIn(0.0, 100.0)
+                                    } else null,
+                                    windSpeed = metar.wspd,
+                                    pressure = metar.altim,
+                                    weatherCode = wCode,
+                                    timestampMs = metar.obsTime?.times(1000) ?: System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WeatherRepository", "Error fetching NOAA", e)
+        }
+        return list.sortedBy { it.distanceKm }
+    }
+
+    private fun metarCoverToWmoCode(cover: String?, rawOb: String?): Int? {
+        if (rawOb != null) {
+            val upperOb = rawOb.uppercase()
+            when {
+                upperOb.contains("TS") -> return 95
+                upperOb.contains("+RA") -> return 65
+                upperOb.contains("RA") -> return 63
+                upperOb.contains("-RA") || upperOb.contains("DZ") -> return 61
+                upperOb.contains("SN") -> return 71
+                upperOb.contains("FG") -> return 45
+            }
+        }
+        if (cover != null) {
+            val upperCover = cover.uppercase()
+            return when {
+                upperCover.contains("CAVOK") || upperCover.contains("CLR") || upperCover.contains("SKC") || upperCover.contains("NSC") -> 0
+                upperCover.contains("FEW") -> 1
+                upperCover.contains("SCT") -> 2
+                upperCover.contains("BKN") -> 2
+                upperCover.contains("OVC") -> 3
+                else -> null
+            }
+        }
+        return null
     }
 }

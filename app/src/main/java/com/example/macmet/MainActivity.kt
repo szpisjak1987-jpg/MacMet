@@ -1,6 +1,19 @@
 package com.example.macmet
 
 import android.Manifest
+import android.app.DownloadManager
+import android.content.Context
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.example.macmet.data.model.api.GithubReleaseDto
+import com.example.macmet.data.updater.AppUpdater
+import com.example.macmet.data.updater.DownloadReceiver
+import com.example.macmet.ui.updater.UpdateDialog
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -90,14 +103,51 @@ fun MainWeatherApp(
         }
     }
 
+    val context = LocalContext.current
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var availableRelease by remember { mutableStateOf<GithubReleaseDto?>(null) }
+    var downloadId by remember { mutableStateOf<Long?>(null) }
+    val appUpdater = remember { AppUpdater(context) }
+
+    DisposableEffect(downloadId) {
+        if (downloadId != null) {
+            val receiver = DownloadReceiver(downloadId!!)
+            val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(receiver, filter, ContextCompat.RECEIVER_EXPORTED)
+            } else {
+                context.registerReceiver(receiver, filter)
+            }
+            onDispose {
+                try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
+            }
+        } else {
+            onDispose {}
+        }
+    }
+
     LaunchedEffect(Unit) {
-        // Request coarse and fine permissions on startup
-        locationPermissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            )
+        // Request permissions
+        val permissions = mutableListOf(
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_FINE_LOCATION
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        locationPermissionLauncher.launch(permissions.toTypedArray())
+
+        // Check for GitHub updates silently
+        try {
+            val currentVersion = BuildConfig.VERSION_NAME
+            val (isUpdateAvailable, release) = appUpdater.checkForUpdate(currentVersion)
+            if (isUpdateAvailable && release != null && release.assets?.isNotEmpty() == true) {
+                availableRelease = release
+                showUpdateDialog = true
+            }
+        } catch (e: Exception) {
+            Log.e("AppUpdater", "Error checking for update", e)
+        }
     }
 
     // Handle back press if in secondary tab or dialog
@@ -266,6 +316,22 @@ fun MainWeatherApp(
                     onDismiss = {
                         isSearchDialogOpen = false
                         viewModel.clearSearch()
+                    }
+                )
+            }
+
+            // GitHub Update Dialog
+            if (showUpdateDialog && availableRelease != null) {
+                val release = availableRelease!!
+                UpdateDialog(
+                    newVersion = release.tagName,
+                    releaseNotes = release.body,
+                    onDismiss = { showUpdateDialog = false },
+                    onDownload = {
+                        val apkAsset = release.assets?.firstOrNull { it.name.endsWith(".apk") }
+                        if (apkAsset != null) {
+                            downloadId = appUpdater.downloadUpdate(apkAsset.browserDownloadUrl, release.tagName)
+                        }
                     }
                 )
             }
