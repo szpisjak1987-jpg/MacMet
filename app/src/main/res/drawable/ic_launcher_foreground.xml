@@ -4,22 +4,37 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    
+    <!-- Warm Sun behind cloud -->
+    <!-- Sun disc -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M60,42m-14,0a14,14 0 1,0 28,0a14,14 0 1,0 -28,0" />
+    <!-- Sun rays -->
+    <path
+        android:strokeColor="#F59E0B"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M60,23 L60,20 M73.4,28.6 L75.5,26.5 M79,42 L82,42 M73.4,55.4 L75.5,57.5 M46.6,28.6 L44.5,26.5" />
 
-    <!-- Sun -->
+    <!-- Stylized Cloud (Safe zone ~54 center) -->
     <path
-        android:fillColor="#FFC107"
-        android:pathData="M54,34c-8.8,0 -16,7.2 -16,16s7.2,16 16,16 16,-7.2 16,-16 -7.2,-16 -16,-16z"/>
+        android:fillColor="#F8FAFC"
+        android:pathData="M40,68 C34,68 29,63 29,57 C29,51.8 32.7,47.4 37.8,46.2 C39.5,39.2 45.8,34 53.5,34 C62.8,34 70.4,41.2 71,50.3 C75.5,50.9 79,54.8 79,59.5 C79,64.7 74.7,69 69.5,69 L40,69 Z" />
 
-    <!-- Cloud -->
+    <!-- Cloud shadow/inner accent -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M78,64H38c-7.2,0 -13,-5.8 -13,-13c0,-5.7 3.8,-10.5 9.1,-12.2C35.5,35.4 38.8,34 42.5,34c5.1,0 9.7,2.4 12.6,6.2C57,38.5 59.8,37 63,37c6.1,0 11.1,4.5 11.9,10.4C79.8,48.4 83,52.2 83,57c0,3.9 -3.1,7 -7,7z"/>
+        android:fillColor="#E2E8F0"
+        android:pathData="M40,68 C34.5,68 30,64 29.2,59 C31.5,61.5 35,63.5 40,63.5 L69.5,63.5 C73,63.5 76,61.8 77.8,59.2 C77,64.2 73.5,68 69.5,68 L40,68 Z" />
 
-    <!-- Rain / Water Drop -->
+    <!-- Raindrops / Weather Sparkles -->
     <path
-        android:fillColor="#29B6F6"
-        android:pathData="M44,76c0,0 -6,7 -6,11c0,3.3 2.7,6 6,6s6,-2.7 6,-6c0,-4 -6,-11 -6,-11z"/>
+        android:fillColor="#38BDF8"
+        android:pathData="M38,73 C38,73 35,78 35,80 C35,81.6 36.3,83 38,83 C39.7,83 41,81.6 41,80 C41,78 38,73 38,73 Z" />
     <path
-        android:fillColor="#29B6F6"
-        android:pathData="M64,76c0,0 -6,7 -6,11c0,3.3 2.7,6 6,6s6,-2.7 6,-6c0,-4 -6,-11 -6,-11z"/>
+        android:fillColor="#38BDF8"
+        android:pathData="M52,73 C52,73 49,78 49,80 C49,81.6 50.3,83 52,83 C53.7,83 55,81.6 55,80 C55,78 52,73 52,73 Z" />
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M66,73 C66,73 63,78 63,80 C63,81.6 64.3,83 66,83 C67.7,83 69,81.6 69,80 C69,78 66,73 66,73 Z" />
 </vector>
