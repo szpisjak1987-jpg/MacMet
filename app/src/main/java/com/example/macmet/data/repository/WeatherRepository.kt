@@ -8,9 +8,11 @@ import com.example.macmet.data.model.AlertType
 import com.example.macmet.data.model.CompleteWeatherData
 import com.example.macmet.data.model.CurrentAirQualityDto
 import com.example.macmet.data.model.DailyForecastItem
+import com.example.macmet.data.model.DailyWeatherDto
 import com.example.macmet.data.model.EuropeanAqiBand
 import com.example.macmet.data.model.GeocodingLocation
 import com.example.macmet.data.model.HourlyForecastItem
+import com.example.macmet.data.model.MinutelyForecastItem
 import com.example.macmet.data.model.OpenMeteoAirQualityResponse
 import com.example.macmet.data.model.OpenMeteoForecastResponse
 import com.example.macmet.data.model.RainViewerResponse
@@ -71,7 +73,9 @@ class WeatherRepository(
                         val sense = async { fetchOpenSenseMapStations(lat, lon) }
                         val netatmo = async { fetchNetatmoStations(lat, lon) }
                         val noaa = async { fetchNoaaStations(lat, lon) }
-                        (sense.await() + netatmo.await() + noaa.await())
+                        val openAq = async { fetchOpenAqStations(lat, lon) }
+                        val aprs = async { fetchAprsStations(lat, lon) }
+                        (sense.await() + netatmo.await() + noaa.await() + openAq.await() + aprs.await())
                             .filter { it.distanceKm <= 50.0 }
                             .sortedBy { it.distanceKm }
                     } catch (e: Exception) {
@@ -173,6 +177,39 @@ class WeatherRepository(
         val hourly = forecast.hourly
         val daily = forecast.daily
 
+        // Format minutely
+        val minutely = forecast.minutely_15
+        val minutelyItems = mutableListOf<MinutelyForecastItem>()
+        if (minutely != null && minutely.time.isNotEmpty()) {
+            val isoParser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US)
+            val minFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+            // Find starting index (first minutely >= current time)
+            val nowStr = isoParser.format(Date())
+            var startIndex = minutely.time.indexOfFirst { it >= nowStr }
+            if (startIndex == -1) startIndex = 0
+
+            val count = minOf(8, minutely.time.size - startIndex) // next 2 hours
+
+            for (k in 0 until count) {
+                val i = startIndex + k
+                val timeStr = minutely.time.getOrNull(i) ?: ""
+                val timeLabel = try {
+                    val date = isoParser.parse(timeStr)
+                    if (date != null) minFormatter.format(date) else timeStr
+                } catch (e: Exception) {
+                    timeStr
+                }
+                minutelyItems.add(
+                    MinutelyForecastItem(
+                        timeLabel = timeLabel,
+                        precipitationMm = minutely.precipitation?.getOrNull(i) ?: 0.0,
+                        weatherCode = minutely.weatherCode?.getOrNull(i) ?: 0
+                    )
+                )
+            }
+        }
+
         // Format hourly (Next 24 hours starting from current hour)
         val hourlyItems = mutableListOf<HourlyForecastItem>()
         if (hourly != null && hourly.time.isNotEmpty()) {
@@ -218,15 +255,15 @@ class WeatherRepository(
                 }
                 val isHourNight = hourOfDay < 6 || hourOfDay >= 20
 
-                val rawCode = hourly.weatherCode.getOrNull(i) ?: 0
+                val rawCode = hourly.weatherCode?.getOrNull(i) ?: 0
                 val cloudPct = hourly.cloudCover?.getOrNull(i)
                 val refinedCode = WmoCodeHelper.refineWeatherCode(rawCode, cloudPct)
 
                 hourlyItems.add(
                     HourlyForecastItem(
                         timeLabel = hourLabel,
-                        temperature = hourly.temperature.getOrNull(i) ?: 0.0,
-                        apparentTemperature = hourly.apparentTemperature?.getOrNull(i) ?: hourly.temperature.getOrNull(i) ?: 0.0,
+                        temperature = hourly.temperature?.getOrNull(i) ?: 0.0,
+                        apparentTemperature = hourly.apparentTemperature?.getOrNull(i) ?: hourly.temperature?.getOrNull(i) ?: 0.0,
                         precipitationProbability = hourly.precipitationProbability?.getOrNull(i) ?: 0,
                         precipitationMm = hourly.precipitation?.getOrNull(i) ?: 0.0,
                         weatherCode = refinedCode,
@@ -241,6 +278,19 @@ class WeatherRepository(
 
         // Format daily
         val dailyItems = mutableListOf<DailyForecastItem>()
+        // Determine the array names based on the requested model combination
+        // When we use best_match, the response often prefixes keys (e.g. temperature_2m_max_best_match)
+        val dailyCodeList = daily?.weatherCode ?: emptyList()
+        val dailyMinList = daily?.temperatureMin ?: emptyList()
+        val dailyMaxList = daily?.temperatureMax ?: emptyList()
+        val dailyPrecipSumList = daily?.precipitationSum ?: emptyList()
+        val dailyPrecipProbList = daily?.precipitationProbabilityMax ?: emptyList()
+        val dailyUvList = daily?.uvIndexMax ?: emptyList()
+        val dailyWindList = daily?.windSpeedMax ?: emptyList()
+        val dailyEt0List = daily?.evapotranspiration ?: emptyList()
+        val dailySunriseList = daily?.sunrise ?: emptyList()
+        val dailySunsetList = daily?.sunset ?: emptyList()
+
         var weekMin = current.temperature
         var weekMax = current.temperature
 
@@ -249,26 +299,31 @@ class WeatherRepository(
             val dayFormatter = SimpleDateFormat("EE", Locale("hu", "HU"))
             val labelFormatter = SimpleDateFormat("MM.dd", Locale.getDefault())
 
-            for (i in daily.time.indices) {
+            val nowCal = Calendar.getInstance()
+            val todayIso = dateParser.format(nowCal.time)
+            var startIndex = daily.time.indexOfFirst { it >= todayIso }
+            if (startIndex == -1) startIndex = 0
+
+            val count = minOf(10, daily.time.size - startIndex)
+
+            for (k in 0 until count) {
+                val i = startIndex + k
                 val dateStr = daily.time[i]
                 val (dayName, dateLabel) = try {
                     val date = dateParser.parse(dateStr)
                     if (date != null) {
                         val cal = Calendar.getInstance()
-                        val today = Calendar.getInstance()
                         cal.time = date
-                        val isToday = cal.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR) &&
-                                cal.get(Calendar.YEAR) == today.get(Calendar.YEAR)
-                        val name = if (isToday) "Ma" else dayFormatter.format(date).replaceFirstChar { it.uppercase() }
+                        val name = if (k == 0) "Ma" else dayFormatter.format(date).replaceFirstChar { it.uppercase() }
                         Pair(name, labelFormatter.format(date))
                     } else Pair(dateStr, dateStr)
                 } catch (e: Exception) {
                     Pair(dateStr, dateStr)
                 }
 
-                val minT = daily.temperatureMin.getOrNull(i) ?: 0.0
-                val maxT = daily.temperatureMax.getOrNull(i) ?: 0.0
-                if (i == 0) {
+                val minT = dailyMinList.getOrNull(i) ?: 0.0
+                val maxT = dailyMaxList.getOrNull(i) ?: 0.0
+                if (k == 0) {
                     weekMin = minT
                     weekMax = maxT
                 } else {
@@ -276,21 +331,21 @@ class WeatherRepository(
                     weekMax = maxOf(weekMax, maxT)
                 }
 
-                val sunriseTime = daily.sunrise?.getOrNull(i)?.takeLast(5) ?: "06:00"
-                val sunsetTime = daily.sunset?.getOrNull(i)?.takeLast(5) ?: "19:00"
+                val sunriseTime = dailySunriseList.getOrNull(i)?.takeLast(5) ?: "06:00"
+                val sunsetTime = dailySunsetList.getOrNull(i)?.takeLast(5) ?: "19:00"
 
                 dailyItems.add(
                     DailyForecastItem(
                         dateLabel = dateLabel,
                         dayOfWeekHu = dayName,
-                        weatherCode = daily.weatherCode.getOrNull(i) ?: 0,
+                        weatherCode = dailyCodeList.getOrNull(i) ?: 0,
                         minTemp = minT,
                         maxTemp = maxT,
-                        precipitationProbability = daily.precipitationProbabilityMax?.getOrNull(i) ?: 0,
-                        precipitationSumMm = daily.precipitationSum?.getOrNull(i) ?: 0.0,
-                        uvIndexMax = daily.uvIndexMax?.getOrNull(i) ?: 0.0,
-                        windSpeedMax = daily.windSpeedMax?.getOrNull(i) ?: 0.0,
-                        evapotranspirationMm = daily.evapotranspiration?.getOrNull(i),
+                        precipitationProbability = dailyPrecipProbList.getOrNull(i) ?: 0,
+                        precipitationSumMm = dailyPrecipSumList.getOrNull(i) ?: 0.0,
+                        uvIndexMax = dailyUvList.getOrNull(i) ?: 0.0,
+                        windSpeedMax = dailyWindList.getOrNull(i) ?: 0.0,
+                        evapotranspirationMm = dailyEt0List.getOrNull(i),
                         sunrise = sunriseTime,
                         sunset = sunsetTime
                     )
@@ -376,6 +431,7 @@ class WeatherRepository(
             elevation = forecast.elevation,
             bestMatchModel = bestModelName,
             current = current,
+            minutelyItems = minutelyItems,
             hourlyItems = hourlyItems,
             dailyItems = dailyItems,
             airQuality = airQuality,
@@ -393,18 +449,20 @@ class WeatherRepository(
         val result = mutableListOf<WeatherStation>()
         try {
             val nearParam = "$lon,$lat"
-            val boxes = NetworkClient.openSenseMapApi.getBoxesNear(near = nearParam, radius = 20000)
+            val boxes = NetworkClient.openSenseMapApi.getBoxesNear(near = nearParam, radius = 50000)
             for (box in boxes) {
                 val coords = box.loc?.firstOrNull()?.geometry?.coordinates
                 if (coords != null && coords.size >= 2) {
                     val boxLon = coords[0]
                     val boxLat = coords[1]
                     val dist = Haversine.distanceKm(lat, lon, boxLat, boxLon)
-                    if (dist <= 20.0) {
+                    if (dist <= 50.0) {
                         var temp: Double? = null
                         var hum: Double? = null
                         var press: Double? = null
                         var wind: Double? = null
+                        var pm25Val: Double? = null
+                        var pm10Val: Double? = null
 
                         box.sensors?.forEach { sensor ->
                             val sName = sensor.title.lowercase()
@@ -415,17 +473,26 @@ class WeatherRepository(
                                     sName.contains("hum") || sName.contains("páratartalom") -> hum = valDouble
                                     sName.contains("press") || sName.contains("nyomás") -> press = valDouble
                                     sName.contains("wind") || sName.contains("szél") -> wind = valDouble
+                                    sName.contains("pm2") || sName.contains("pm 2") || sName.contains("feinstaub") || sName.contains("sds011") || sName.contains("por") -> pm25Val = valDouble
+                                    sName.contains("pm10") || sName.contains("pm 10") -> pm10Val = valDouble
                                 }
                             }
                         }
 
-                        if (temp != null || hum != null || press != null || wind != null) {
+                        if (temp != null || hum != null || press != null || wind != null || pm25Val != null || pm10Val != null) {
+                            var stationName = box.name.trim()
+                            if (stationName.equals("feinstaub", ignoreCase = true) || stationName.lowercase().startsWith("pm2") || stationName.lowercase().startsWith("pm10")) {
+                                stationName = "senseBox Érzékelő"
+                            }
+
                             val cityName = box.name.substringBefore("-").substringBefore("(").trim()
+                            val cleanCity = if (cityName.length in 3..25 && !cityName.equals(stationName, ignoreCase = true)) cityName else null
+
                             result.add(
                                 WeatherStation(
                                     id = "sensebox_${box.id}",
-                                    name = box.name,
-                                    cityName = if (cityName.length in 3..25) cityName else null,
+                                    name = stationName,
+                                    cityName = cleanCity,
                                     providerType = StationProviderType.AMATEUR_OPENSENSEMAP,
                                     latitude = boxLat,
                                     longitude = boxLon,
@@ -434,6 +501,8 @@ class WeatherRepository(
                                     relativeHumidity = hum,
                                     pressure = press,
                                     windSpeed = wind,
+                                    pm25 = pm25Val,
+                                    pm10 = pm10Val,
                                     timestampMs = System.currentTimeMillis()
                                 )
                             )
@@ -486,8 +555,14 @@ class WeatherRepository(
                             }
 
                             if (temp != null) {
-                                val cName = station.place?.city
-                                val sName = station.place?.street ?: station.place?.city ?: "Netatmo Állomás"
+                                val cName = station.place?.city?.trim()
+                                val street = station.place?.street?.trim()
+                                val shortId = station.id.takeLast(5)
+                                val sName = when {
+                                    !street.isNullOrBlank() && street != cName -> street
+                                    !cName.isNullOrBlank() -> "$cName (#$shortId)"
+                                    else -> "Netatmo (#$shortId)"
+                                }
                                 list.add(
                                     WeatherStation(
                                         id = "netatmo_${station.id}",
@@ -510,6 +585,110 @@ class WeatherRepository(
             }
         } catch (e: Exception) {
             Log.e("WeatherRepository", "Error fetching Netatmo", e)
+        }
+        return list
+    }
+
+    private suspend fun fetchOpenAqStations(lat: Double, lon: Double): List<WeatherStation> {
+        val list = mutableListOf<WeatherStation>()
+        try {
+            val response = NetworkClient.openAqApi.getLocationsNear("$lat,$lon", radius = 25000)
+            if (response.isSuccessful) {
+                response.body()?.results?.forEach { loc ->
+                    val sLat = loc.coordinates?.latitude
+                    val sLon = loc.coordinates?.longitude
+                    if (sLat != null && sLon != null) {
+                        val dist = Haversine.distanceKm(lat, lon, sLat, sLon)
+                        if (dist <= 25.0) {
+                            var pm25Val: Double? = null
+                            var pm10Val: Double? = null
+
+                            // OpenAQ v3 requires fetching /v3/locations/{id}/sensors for live values
+                            val sensorsResp = NetworkClient.openAqApi.getLocationSensors(loc.id)
+                            if (sensorsResp.isSuccessful) {
+                                sensorsResp.body()?.results?.forEach { sensor ->
+                                    val pName = sensor.parameter?.name?.lowercase() ?: sensor.name?.lowercase() ?: ""
+                                    val valDouble = sensor.latest?.value
+                                    if (valDouble != null) {
+                                        when {
+                                            pName.contains("pm25") || pName.contains("pm2.5") -> pm25Val = valDouble
+                                            pName.contains("pm10") -> pm10Val = valDouble
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (pm25Val != null || pm10Val != null) {
+                                val cName = loc.locality ?: loc.name?.substringBefore("-")?.trim() ?: "Mérőállomás"
+                                val sName = loc.name?.replace(cName, "")?.trim()?.removePrefix("-")?.trim() ?: "OpenAQ Mérőhely"
+                                list.add(
+                                    WeatherStation(
+                                        id = "openaq_${loc.id}",
+                                        name = if (sName.isNotBlank()) sName else loc.name ?: "Mérőhely",
+                                        cityName = cName,
+                                        providerType = StationProviderType.OFFICIAL_OPENAQ,
+                                        latitude = sLat,
+                                        longitude = sLon,
+                                        distanceKm = (dist * 10.0).roundToInt() / 10.0,
+                                        pm25 = pm25Val,
+                                        pm10 = pm10Val,
+                                        timestampMs = System.currentTimeMillis()
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WeatherRepository", "Error fetching OpenAQ", e)
+        }
+        return list
+    }
+
+    private suspend fun fetchAprsStations(lat: Double, lon: Double): List<WeatherStation> {
+        val list = mutableListOf<WeatherStation>()
+        try {
+            val response = NetworkClient.aprsFiApi.getWxStations()
+            if (response.isSuccessful && response.body()?.result == "ok") {
+                response.body()?.entries?.forEach { entry ->
+                    val sLat = entry.lat?.toString()?.toDoubleOrNull()
+                    val sLon = entry.lng?.toString()?.toDoubleOrNull()
+                    val temp = entry.temp?.toString()?.toDoubleOrNull()
+                    val hum = entry.humidity?.toString()?.toDoubleOrNull()
+                    val press = entry.pressure?.toString()?.toDoubleOrNull()
+                    val wind = entry.windSpeed?.toString()?.toDoubleOrNull()
+
+                    if (sLat != null && sLon != null && (temp != null || hum != null || press != null || wind != null)) {
+                        val dist = Haversine.distanceKm(lat, lon, sLat, sLon)
+                        if (dist <= 50.0) {
+                            val callsign = entry.name
+                            val commentName = entry.comment?.take(25)?.trim()
+                            val sName = if (!commentName.isNullOrBlank()) "$callsign ($commentName)" else callsign
+                            val windKmH = if (wind != null) (wind * 3.6 * 10.0).roundToInt() / 10.0 else null
+
+                            list.add(
+                                WeatherStation(
+                                    id = "aprs_${callsign}",
+                                    name = sName,
+                                    cityName = null,
+                                    providerType = StationProviderType.AMATEUR_APRS,
+                                    latitude = sLat,
+                                    longitude = sLon,
+                                    distanceKm = (dist * 10.0).roundToInt() / 10.0,
+                                    temperature = temp,
+                                    relativeHumidity = hum,
+                                    pressure = press,
+                                    windSpeed = windKmH,
+                                    timestampMs = System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WeatherRepository", "Error fetching APRS.fi", e)
         }
         return list
     }

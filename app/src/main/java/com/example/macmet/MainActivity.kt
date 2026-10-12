@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.outlined.Analytics
 import androidx.compose.material.icons.outlined.Radar
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,18 +56,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Settings
 import com.example.macmet.ui.screens.ClimateResearchScreen
 import com.example.macmet.ui.screens.ForecastScreen
+import com.example.macmet.ui.screens.NowcastScreen
 import com.example.macmet.ui.screens.RadarScreen
 import com.example.macmet.ui.screens.SearchLocationsDialog
+import com.example.macmet.ui.screens.SettingsScreen
 import com.example.macmet.ui.theme.MyApplicationTheme
 import com.example.macmet.viewmodel.WeatherUiState
 import com.example.macmet.viewmodel.WeatherViewModel
 
 enum class AppTab(val label: String) {
     FORECAST("Előrejelzés"),
+    NOWCAST("Nowcast"),
     RADAR("Radar"),
-    RESEARCH("Kutatás")
+    SETTINGS("Beállítások")
 }
 
 class MainActivity : ComponentActivity() {
@@ -195,7 +202,33 @@ fun MainWeatherApp(
                     modifier = Modifier.testTag("tab_forecast")
                 )
 
-                // Tab 2: RainViewer Radar
+                // Tab 2: Nowcast (Következő órák)
+                NavigationBarItem(
+                    selected = currentTab == AppTab.NOWCAST,
+                    onClick = { currentTab = AppTab.NOWCAST },
+                    icon = {
+                        Icon(
+                            imageVector = if (currentTab == AppTab.NOWCAST) Icons.Filled.Timer else Icons.Outlined.Timer,
+                            contentDescription = "Nowcast"
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = AppTab.NOWCAST.label,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color(0xFF0F172A),
+                        selectedTextColor = Color(0xFF38BDF8),
+                        indicatorColor = Color(0xFF38BDF8),
+                        unselectedIconColor = Color.White.copy(alpha = 0.6f),
+                        unselectedTextColor = Color.White.copy(alpha = 0.6f)
+                    ),
+                    modifier = Modifier.testTag("tab_nowcast")
+                )
+
+                // Tab 3: RainViewer Radar
                 NavigationBarItem(
                     selected = currentTab == AppTab.RADAR,
                     onClick = { currentTab = AppTab.RADAR },
@@ -221,19 +254,19 @@ fun MainWeatherApp(
                     modifier = Modifier.testTag("tab_radar")
                 )
 
-                // Tab 3: Climate Research & Sources
+                // Tab 4: Settings & Widgets
                 NavigationBarItem(
-                    selected = currentTab == AppTab.RESEARCH,
-                    onClick = { currentTab = AppTab.RESEARCH },
+                    selected = currentTab == AppTab.SETTINGS,
+                    onClick = { currentTab = AppTab.SETTINGS },
                     icon = {
                         Icon(
-                            imageVector = if (currentTab == AppTab.RESEARCH) Icons.Filled.Analytics else Icons.Outlined.Analytics,
-                            contentDescription = "Kutatási háttér és nyílt adatok"
+                            imageVector = if (currentTab == AppTab.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings,
+                            contentDescription = "Beállítások"
                         )
                     },
                     label = {
                         Text(
-                            text = AppTab.RESEARCH.label,
+                            text = AppTab.SETTINGS.label,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         )
                     },
@@ -244,7 +277,7 @@ fun MainWeatherApp(
                         unselectedIconColor = Color.White.copy(alpha = 0.6f),
                         unselectedTextColor = Color.White.copy(alpha = 0.6f)
                     ),
-                    modifier = Modifier.testTag("tab_research")
+                    modifier = Modifier.testTag("tab_settings")
                 )
             }
         }
@@ -263,6 +296,10 @@ fun MainWeatherApp(
                         onOpenSearch = { isSearchDialogOpen = true },
                         onToggleFavorite = { viewModel.toggleFavorite() }
                     )
+                }
+                
+                AppTab.NOWCAST -> {
+                    NowcastScreen(uiState = uiState)
                 }
 
                 AppTab.RADAR -> {
@@ -293,8 +330,8 @@ fun MainWeatherApp(
                     )
                 }
 
-                AppTab.RESEARCH -> {
-                    ClimateResearchScreen()
+                AppTab.SETTINGS -> {
+                    SettingsScreen()
                 }
             }
 
