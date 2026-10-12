@@ -173,20 +173,36 @@ class WeatherRepository(
         val hourly = forecast.hourly
         val daily = forecast.daily
 
-        // Format hourly (first 36-48 hours)
+        // Format hourly (Next 24 hours starting from current hour)
         val hourlyItems = mutableListOf<HourlyForecastItem>()
         if (hourly != null && hourly.time.isNotEmpty()) {
-            val count = minOf(36, hourly.time.size)
             val isoParser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US)
             val hourFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
 
-            for (i in 0 until count) {
+            // Current ISO hour formatted e.g. "2026-10-02T18:00"
+            val nowCal = Calendar.getInstance()
+            nowCal.set(Calendar.MINUTE, 0)
+            nowCal.set(Calendar.SECOND, 0)
+            val currentHourIso = isoParser.format(nowCal.time)
+
+            // Find starting index (first hour >= current hour)
+            var startIndex = hourly.time.indexOfFirst { it >= currentHourIso }
+            if (startIndex == -1) startIndex = 0
+
+            val count = minOf(24, hourly.time.size - startIndex)
+
+            for (k in 0 until count) {
+                val i = startIndex + k
                 val timeStr = hourly.time.getOrNull(i) ?: ""
-                val hourLabel = try {
-                    val date = isoParser.parse(timeStr)
-                    if (i == 0) "Most" else (if (date != null) hourFormatter.format(date) else timeStr)
-                } catch (e: Exception) {
-                    timeStr
+                val hourLabel = if (k == 0) {
+                    "Most"
+                } else {
+                    try {
+                        val date = isoParser.parse(timeStr)
+                        if (date != null) hourFormatter.format(date) else timeStr
+                    } catch (e: Exception) {
+                        timeStr
+                    }
                 }
 
                 // Check isNight for each hour:
