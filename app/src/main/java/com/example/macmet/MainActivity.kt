@@ -119,7 +119,10 @@ fun MainWeatherApp(
     DisposableEffect(downloadId) {
         if (downloadId != null) {
             val receiver = DownloadReceiver(downloadId!!)
-            val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            val filter = IntentFilter().apply {
+                addAction(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+                addAction(DownloadManager.ACTION_NOTIFICATION_CLICKED)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.registerReceiver(receiver, filter, ContextCompat.RECEIVER_EXPORTED)
             } else {
